@@ -100,6 +100,7 @@ property inheritance, to retain full control over sexp evaluation.
           (user-error "tdir: no :tangle-dir: property found in heading hierarchy"))
         (org-tangle-dir--effective-dir))))))
 
+;;;###autoload
 (defun org-tangle-dir-base (&optional subdir)
   "Return the parent heading's effective tangle-dir, joined with SUBDIR.
 Use in :tangle-dir: property values for hierarchy-relative paths:
@@ -117,6 +118,7 @@ For externally-rooted paths, use expand-file-name directly:
           (expand-file-name (string-trim subdir "/" nil) parent-dir)
         parent-dir))))
 
+;;;###autoload
 (defun org-tangle-dir (&optional path)
   "Return the effective tangle directory for the current Org entry,
 optionally joined with PATH via `expand-file-name'.
@@ -131,7 +133,9 @@ For :tangle-dir: property values, use `org-tangle-dir-base' or `expand-file-name
       dir)))
 
 ;; shorter aliases, ignore package-lint!
+;;;###autoload
 (defalias 'tdir #'org-tangle-dir)
+;;;###autoload
 (defalias 'tdir-base #'org-tangle-dir-base)
 
 (provide 'org-tangle-dir)
