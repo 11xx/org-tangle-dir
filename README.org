@@ -1,10 +1,18 @@
 #+TITLE: org-tangle-dir
 
 This package defines helper functions for dynamic =tangle-dir= property
-resolution in Org Babel.  It evaluates sexps in =tangle-dir= property
-values against a whitelist, walks the outline tree for inheritance, and
-falls back to file-level =#+PROPERTY= when no heading-level property
-exists.
+resolution in Org Babel.  It evaluates sexps in =tangle-dir= property values
+against a whitelist, walks the outline tree for inheritance, and falls back to
+file-level =#+PROPERTY= when no heading-level property exists.
+
+Values to properties are meant to be strings only, so the helper function takes
+that string and evaluates it as an Elisp expression. Since this is unsafe,
+mitigation comes from a explicit whitelist in
+=org-tangle-dir-whitelist-functions=.
+
+This works because functions can be used in the =:tangle= header argument of a
+source code block, and by defining a helper function like that retrieves the
+value of a inherited property, dynamic strings can be used as tangle target.
 
 * Installation
 
@@ -38,6 +46,10 @@ Manual
 #+end_src
 
 * Usage
+
+I recommend using the shorthand aliases:
+- =tdir= is a short alias for =org-tangle-dir=
+- =tdir-base= is a short alias for =org-tangle-dir-base=
 
 ** Property syntaxes
 

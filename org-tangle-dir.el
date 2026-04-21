@@ -22,7 +22,11 @@
 (require 'org)
 (require 'cl-lib)
 
-(defvar org-tangle-dir--whitelist-functions
+(defgroup org-tangle-dir nil
+  "Org Babel tangle-dir helpers."
+  :group 'org)
+
+(defcustom org-tangle-dir-whitelist-functions
   '(org-tangle-dir-base
     tdir-base
     expand-file-name
@@ -36,12 +40,14 @@
     getenv
     xdg-runtime-dir)
   "Side-effect-free functions permitted inside :tangle-dir: sexp values.
-All must return strings or path components.")
+All must return strings or path components."
+  :type '(repeat function)
+  :group 'org-tangle-dir)
 
 (defun org-tangle-dir--safe-form-p (form)
   "Return t if FORM is safe to evaluate as a :tangle-dir: expression.
 Safe means: a self-evaluating atom, or a list whose car is in
-`org-tangle-dir--whitelist-functions' and whose every argument are also safe."
+`org-tangle-dir-whitelist-functions' and whose every argument is also safe."
   (cond
    ((stringp form)          t)
    ((numberp form)          t)
@@ -49,7 +55,7 @@ Safe means: a self-evaluating atom, or a list whose car is in
    ((keywordp form)         t)
    ((and (consp form)
          (symbolp (car form))
-         (memq (car form) org-tangle-dir--whitelist-functions)
+         (memq (car form) org-tangle-dir-whitelist-functions)
          (cl-every #'org-tangle-dir--safe-form-p (cdr form)))
     t)
    (t nil)))
@@ -67,7 +73,7 @@ Returns STRING as-is if it does not start with '('."
         (unless (org-tangle-dir--safe-form-p form)
           (user-error
            "tdir: unsafe form in :tangle-dir: %s\n  Only %s with literal/whitelisted args are permitted"
-           form org-tangle-dir--whitelist-functions))
+           form org-tangle-dir-whitelist-functions))
         (let ((result (eval form t)))
           (unless (stringp result)
             (user-error "tdir: :tangle-dir: sexp must return a string, got: %S" result))
