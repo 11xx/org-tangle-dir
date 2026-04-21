@@ -1,189 +1,154 @@
 #+TITLE: org-tangle-dir
 
-This package defines helper string expansion functions that generates a
-filepath based on the `tangle-dir' property for Org Babel Tangle, its value
-must be a file path string or a allowed string function evaluated by the helper
-at runtime.
+This package defines helper functions for dynamic =tangle-dir= property
+resolution in Org Babel.  It evaluates sexps in =tangle-dir= property
+values against a whitelist, walks the outline tree for inheritance, and
+falls back to file-level =#+PROPERTY= when no heading-level property
+exists.
 
-This works because functions can be used in the `:tangle' header argument of a
-source code block, and by defining a helper function like `tdir' that retrieves
-the value of a inherited property, dynamic strings can be used as tangle
-target.
+* Installation
+
+package-vc-install (Emacs 29+)
+#+begin_src elisp
+(package-vc-install "https://codeberg.org/useless-utils/org-tangle-dir")
+(require 'org-tangle-dir)
+#+end_src
+
+use-package + package-vc-install (Emacs 29+)
+#+begin_src elisp
+(use-package org-tangle-dir
+  :vc (:url "https://codeberg.org/useless-utils/org-tangle-dir"))
+#+end_src
+
+straight.el
+#+begin_src elisp
+(straight-use-package
+ '(org-tangle-dir :type git :host codeberg :repo "useless-utils/org-tangle-dir"))
+#+end_src
+
+Elpaca
+#+begin_src elisp
+(elpaca (org-tangle-dir :host codeberg :repo "useless-utils/org-tangle-dir"))
+#+end_src
+
+Manual
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/org-tangle-dir")
+(require 'org-tangle-dir)
+#+end_src
 
 * Usage
-Define the =tangle-dir= value:
+
+** Property syntaxes
+
+=org-tangle-dir= supports both drawer and file-level property syntax:
+
+: #+PROPERTY: tangle-dir /default/path
+
+or in a heading drawer (recommended):
 #+begin_src text
 :PROPERTIES:
-:tangle-dir: /tmp
+:tangle-dir: /tmp/myproject
 :END:
 #+end_src
 
-It can also be a function:
+** Resolution order
+
+When resolving =tangle-dir= for a heading:
+
+1. Current heading's drawer (if non-empty)
+2. Parent heading's drawer (walk up outline)
+3. File-level =#+PROPERTY= (checked once at top of tree)
+4. Error if nothing found
+
+** Sexp evaluation
+
+Property values that start with =(= are evaluated as Lisp.  Only whitelisted
+functions may be used:
+
 #+begin_src text
 :PROPERTIES:
-:tangle-dir: (expand-file-name "dir" (xdg-data-home))
+:tangle-dir: (expand-file-name "conf" (xdg-config-home))
 :END:
 #+end_src
 
-Note that the values to properties are meant to be strings only, so the helper
-function takes this string and evaluates it as a elisp expression. Since this
-is unsafe by default, a mitigation is done by defining a explicit list of
-allowed functions in ~org-tangle-dir--whitelist-functions~ where only a member of
-that list will be allowed to be executed as a value for =tangle-dir=.
+- Allowed functions by default:
+  + =org-tangle-dir-base=
+  + =tdir-base=
+  + =concat=
+  + =expand-file-name=
+  + =getenv=
+  + =xdg-data-dirs=
+  + =xdg-bin-home=
+  + =xdg-cache-home=
+  + =xdg-config-dirs=
+  + =xdg-config-home=
+  + =xdg-data-home=
+  + =xdg-runtime-dir=
 
-* org-tangle-dir.el
+** Child-relative paths
+
+Use =tdir-base= to build paths relative to the parent heading's
+effective tangle dir:
+
+#+begin_src org
+,* Project
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle org-tangle-dir.el
+:tangle-dir: ~/projects/myapp
+:END:
+,** Config
+:PROPERTIES:
+:tangle-dir: (tdir-base "config")
+:END:
+#+end_src
+
+** Src block usage
+
+In a =:tangle= header of a source block, call =tdir= with the
+filename:
+#+begin_src org
+:PROPERTIES:
+:tangle-dir: ~/projects/myapp
 :END:
 
-
-#+begin_src emacs-lisp :exports none
-;;; org-tangle-dir.el --- Org Babel `:tangle' helpers based on property value -*- lexical-binding: t; -*-
-
-;; Author: Lucas G <g@11xx.org>
-;; URL: https://codeberg.org/useless-utils/org-tangle-dir
-;; Version: 2026.4.20
-;; Package-Requires: ((emacs "27.1"))
-;; SPDX-License-Identifier: Unlicense
-
-;;; Commentary:
-;; This package defines helper string expansion functions that generates a
-;; filepath based on the `tangle-dir' property for Org Babel Tangle, its value
-;; must be a file path string or a allowed string function evaluated by the
-;; helper at runtime.
-
-;; This works because functions can be used in the `:tangle' header argument of
-;; a source code block, and by defining a helper function like `tdir' that
-;; retrieves the value of a inherited property, dynamic strings can be used as
-;; tangle target.
+,** Config
+,#+begin_src conf :tangle (tdir "app.conf")
+server.port: 8080
+,#+end_src
 #+end_src
 
-** Code
-#+begin_src emacs-lisp :exports none :noweb yes
-;;; Code:
-(defvar org-tangle-dir--whitelist-functions
-  '(org-tangle-dir-base
-    tdir-base
-    expand-file-name
-    concat
-    xdg-config-home
-    xdg-data-home
-    xdg-cache-home
-    xdg-bin-home
-    xdg-config-dirs
-    xdg-data-dirs
-    getenv
-    xdg-runtime-dir)
-  "Side-effect-free functions permitted inside :tangle-dir: sexp values.
-All must return strings or path components.")
+** Example
+#+begin_src org
+,#+PROPERTY: tangle-dir ~/projects/myapp
 
-(defun org-tangle-dir--safe-form-p (form)
-  "Return t if FORM is safe to evaluate as a :tangle-dir: expression.
-Safe means: a self-evaluating atom, or a list whose car is in
-`org-tangle-dir--whitelist-functions' and whose every argument is also safe."
-  (cond
-   ((stringp form)          t)
-   ((numberp form)          t)
-   ((memq form '(t nil))    t)
-   ((keywordp form)         t)
-   ((and (consp form)
-         (symbolp (car form))
-         (memq (car form) org-tangle-dir--whitelist-functions)
-         (cl-every #'org-tangle-dir--safe-form-p (cdr form)))
-    t)
-   (t nil)))
+,* Scripts
+,#+begin_src sh :tangle (tdir "setup.sh")
+#!/bin/bash
+echo "running setup"
+,#+end_src
 
-(defun org-tangle-dir--eval-sexp (string)
-  "Safely evaluate STRING as a :tangle-dir: property value.
-Returns STRING as-is if it does not start with '('."
-  (let ((s (string-trim string)))
-    (if (not (string-prefix-p "(" s))
-        s
-      (let ((form (condition-case err
-                      (read s)
-                    (error (user-error
-                            "tdir: malformed sexp in :tangle-dir: %s — %s" s err)))))
-        (unless (org-tangle-dir--safe-form-p form)
-          (user-error
-           "tdir: unsafe form in :tangle-dir: %s\n  Only %s with literal/whitelisted args are permitted"
-           form org-tangle-dir--whitelist-functions))
-        (let ((result (eval form t)))
-          (unless (stringp result)
-            (user-error "tdir: :tangle-dir: sexp must return a string, got: %S" result))
-          result)))))
-
-(defvar org-tangle-dir--resolving nil
-  "Stack of heading positions currently being resolved.
-Used to detect circular :tangle-dir: references.")
-
-(defun org-tangle-dir--effective-dir ()
-  "Resolve :tangle-dir: for the current heading without Org's built-in
-property inheritance, to retain full control over sexp evaluation.
-
-- Plain string → returned directly.
-- Sexp         → validated and evaluated; circular refs cause a user-error.
-- Missing      → walks up the outline tree recursively."
-  (let* ((raw (org-entry-get nil "tangle-dir" nil))
-         (pos (save-excursion (org-back-to-heading t) (point))))
-    (cond
-     ((and raw (not (string-prefix-p "(" (string-trim raw))))
-      (string-trim raw nil "/"))
-
-     (raw
-      (when (memq pos org-tangle-dir--resolving)
-        (user-error
-         "tdir: circular :tangle-dir: at '%s' — use `org-tangle-dir-base' in properties, not `tdir'"
-         (org-entry-get nil "ITEM")))
-      (let ((org-tangle-dir--resolving (cons pos org-tangle-dir--resolving)))
-        (string-trim (org-tangle-dir--eval-sexp (string-trim raw)) nil "/")))
-
-     (t
-      (save-excursion
-        (unless (org-up-heading-safe)
-          (user-error "tdir: no :tangle-dir: property found in heading hierarchy"))
-        (org-tangle-dir--effective-dir))))))
-
-;;;###autoload
-(defun org-tangle-dir-base (&optional subdir)
-  "Return the parent heading's effective tangle-dir, joined with SUBDIR.
-Use in :tangle-dir: property values for hierarchy-relative paths:
-
-  :tangle-dir: (org-tangle-dir-base \"tasks\")
-
-For externally-rooted paths, use expand-file-name directly:
-
-  :tangle-dir: (expand-file-name \"nnn/plugins\" (xdg-config-home))"
-  (save-excursion
-    (unless (org-up-heading-safe)
-      (user-error "org-tangle-dir-base: no parent heading"))
-    (let ((parent-dir (org-tangle-dir--effective-dir)))
-      (if subdir
-          (expand-file-name (string-trim subdir "/" nil) parent-dir)
-        parent-dir))))
-
-;;;###autoload
-(defun org-tangle-dir (&optional path)
-  "Return the effective tangle directory for the current Org entry,
-optionally joined with PATH via `expand-file-name'.
-
-Use in :tangle src block headers:
-  :tangle (tdir \"filename.yml\")
-
-For :tangle-dir: property values, use `org-tangle-dir-base' or `expand-file-name'."
-  (let ((dir (org-tangle-dir--effective-dir)))
-    (if path
-        (expand-file-name (string-trim path "/" nil) dir)
-      dir)))
-
-;; shorter aliases, ignore package-lint!
-;;;###autoload
-(defalias 'tdir #'org-tangle-dir)
-;;;###autoload
-(defalias 'tdir-base #'org-tangle-dir-base)
-
-(provide 'org-tangle-dir)
-;;; org-tangle-dir.el ends here
+,* Config
+:PROPERTIES:
+:tangle-dir: (expand-file-name "config" (xdg-config-home))
+:END:
+,#+begin_src yaml :tangle (tdir "app.yml")
+app:
+  name: myapp
+,#+end_src
 #+end_src
+
+* Troubleshooting
+
+** "circular :tangle-dir:" error
+
+If a heading's =tangle-dir= uses =(tdir ...)= pointing to itself or a child,
+circular resolution is detected and blocked.  Use =tdir-base= for parent-relative
+paths instead.
+
+** "unsafe form" error
+
+Only functions in the whitelist may appear in sexp values.  This is a security
+measure. Arbitrary Elisp cannot be evaluated from property values.
 
 * COMMENT Notes
 # [2023-05-19 Fri 23:48:32 -03]

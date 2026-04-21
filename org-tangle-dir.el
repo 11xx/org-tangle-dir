@@ -18,6 +18,10 @@
 ;; tangle target.
 
 ;;; Code:
+
+(require 'org)
+(require 'cl-lib)
+
 (defvar org-tangle-dir--whitelist-functions
   '(org-tangle-dir-base
     tdir-base
@@ -37,7 +41,7 @@ All must return strings or path components.")
 (defun org-tangle-dir--safe-form-p (form)
   "Return t if FORM is safe to evaluate as a :tangle-dir: expression.
 Safe means: a self-evaluating atom, or a list whose car is in
-`org-tangle-dir--whitelist-functions' and whose every argument is also safe."
+`org-tangle-dir--whitelist-functions' and whose every argument are also safe."
   (cond
    ((stringp form)          t)
    ((numberp form)          t)
@@ -69,36 +73,57 @@ Returns STRING as-is if it does not start with '('."
             (user-error "tdir: :tangle-dir: sexp must return a string, got: %S" result))
           result)))))
 
+(defun org-tangle-dir--trim-trailing-slash (s)
+  "Remove all trailing slashes from S."
+  (while (and (> (length s) 1)
+              (eq (aref s (1- (length s))) ?/))
+    (setq s (substring s 0 -1)))
+  s)
+
 (defvar org-tangle-dir--resolving nil
   "Stack of heading positions currently being resolved.
 Used to detect circular :tangle-dir: references.")
 
 (defun org-tangle-dir--effective-dir ()
-  "Resolve :tangle-dir: for the current heading without Org's built-in
-property inheritance, to retain full control over sexp evaluation.
+  "Resolve :tangle-dir: for the current heading.
+Resolution order: current heading drawer → parent heading drawers →
+file-level #+PROPERTY (checked only after parent walk exhausts).
 
-- Plain string → returned directly.
-- Sexp         → validated and evaluated; circular refs cause a user-error.
-- Missing      → walks up the outline tree recursively."
-  (let* ((raw (org-entry-get nil "tangle-dir" nil))
-         (pos (save-excursion (org-back-to-heading t) (point))))
+Plain string → trim trailing slashes and return.
+Sexp         → validated and evaluated; circular refs cause a user-error.
+Empty/missing → walks up outline tree; falls back to file-level property."
+  (let ((raw (org-entry-get nil "tangle-dir" nil)))
     (cond
-     ((and raw (not (string-prefix-p "(" (string-trim raw))))
-      (string-trim raw nil "/"))
+     ((and (stringp raw)
+           (> (length raw) 0)
+           (not (string-prefix-p "(" (string-trim raw))))
+      (org-tangle-dir--trim-trailing-slash (string-trim raw)))
 
-     (raw
-      (when (memq pos org-tangle-dir--resolving)
-        (user-error
-         "tdir: circular :tangle-dir: at '%s' — use `org-tangle-dir-base' in properties, not `tdir'"
-         (org-entry-get nil "ITEM")))
-      (let ((org-tangle-dir--resolving (cons pos org-tangle-dir--resolving)))
-        (string-trim (org-tangle-dir--eval-sexp (string-trim raw)) nil "/")))
+     ((and (stringp raw) (> (length raw) 0))
+      (let* ((pos (save-excursion (org-back-to-heading t) (point))))
+        (when (memq pos org-tangle-dir--resolving)
+          (user-error
+           "tdir: circular :tangle-dir: at '%s' — use `org-tangle-dir-base' in properties, not `tdir'"
+           (org-entry-get nil "ITEM")))
+        (let ((org-tangle-dir--resolving (cons pos org-tangle-dir--resolving)))
+          (org-tangle-dir--trim-trailing-slash
+           (org-tangle-dir--eval-sexp (string-trim raw))))))
+
+     ((org-up-heading-safe)
+      (org-tangle-dir--effective-dir))
 
      (t
-      (save-excursion
-        (unless (org-up-heading-safe)
-          (user-error "tdir: no :tangle-dir: property found in heading hierarchy"))
-        (org-tangle-dir--effective-dir))))))
+      (let ((file-raw (org-entry-get nil "tangle-dir" t)))
+        (cond
+         ((and (stringp file-raw)
+               (> (length file-raw) 0)
+               (string-prefix-p "(" (string-trim file-raw)))
+          (org-tangle-dir--trim-trailing-slash
+           (org-tangle-dir--eval-sexp (string-trim file-raw))))
+         ((and (stringp file-raw) (> (length file-raw) 0))
+          (org-tangle-dir--trim-trailing-slash file-raw))
+         (t
+          (user-error "tdir: no :tangle-dir: property found in heading hierarchy or file"))))))))
 
 ;;;###autoload
 (defun org-tangle-dir-base (&optional subdir)
@@ -132,7 +157,7 @@ For :tangle-dir: property values, use `org-tangle-dir-base' or `expand-file-name
         (expand-file-name (string-trim path "/" nil) dir)
       dir)))
 
-;; shorter aliases, ignore package-lint!
+;; shorter aliases
 ;;;###autoload
 (defalias 'tdir #'org-tangle-dir)
 ;;;###autoload
