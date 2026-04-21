@@ -114,6 +114,9 @@ effective tangle dir:
 :END:
 #+end_src
 
+tdir-base =>
+: "/home/user/projects/myapp/config"
+
 ** Src block usage
 
 In a =:tangle= header of a source block, call =tdir= with the
@@ -128,6 +131,9 @@ filename:
 server.port: 8080
 ,#+end_src
 #+end_src
+
+tdir =>
+: /home/user/projects/myapp/app.conf
 
 ** Example
 #+begin_src org
@@ -148,6 +154,12 @@ app:
   name: myapp
 ,#+end_src
 #+end_src
+
+- where ::
+  + ~(tdir "setup.sh")~  => ~/home/user/projects/myapp/setup.sh~
+  + ~(tdir "app.yml")~ => ~/home/user/.config/config/app.yml~
+
+
 
 * Troubleshooting
 
