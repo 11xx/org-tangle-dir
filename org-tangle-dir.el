@@ -2,7 +2,7 @@
 
 ;; Author: Lucas G <g@11xx.org>
 ;; URL: https://codeberg.org/useless-utils/org-tangle-dir
-;; Version: 2026.4.20
+;; Version: 2026.4.22
 ;; Package-Requires: ((emacs "27.1"))
 ;; SPDX-License-Identifier: Unlicense
 
