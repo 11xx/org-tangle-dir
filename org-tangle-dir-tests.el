@@ -105,5 +105,24 @@
   (org-tangle-dir-test-with-temp-text "* P\n:PROPERTIES:\n:tangle-dir: (list 1 2 3)\n:END:\n"
     (should-error (org-tangle-dir) :type 'user-error)))
 
+(ert-deftest org-tangle-dir-test/deep-narrow-inheritance ()
+  "tdir-base works when narrowed to a subtree below the tangle-dir root.
+Regression test for max-lisp-eval-depth with deep recursion + narrowing."
+  (org-tangle-dir-test-with-temp-text
+   "* Roles
+:PROPERTIES:
+:tangle-dir: roles
+:END:
+** File Systems & Mounts
+:PROPERTIES:
+:tangle-dir: (tdir-base \"file_system\")
+:END:
+*** Tasks
+:PROPERTIES:
+:tangle-dir: (tdir-base \"tasks\")
+:END:\n"
+   (let ((expected (expand-file-name "roles/file_system/tasks")))
+     (should (string= (org-tangle-dir) expected)))))
+
 (provide 'org-tangle-dir-tests)
 ;;; org-tangle-dir-tests.el ends here
