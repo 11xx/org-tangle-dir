@@ -124,5 +124,45 @@ Regression test for max-lisp-eval-depth with deep recursion + narrowing."
    (let ((expected (expand-file-name "roles/file_system/tasks")))
      (should (string= (org-tangle-dir) expected)))))
 
+(defconst org-tangle-dir-test--roles-text
+  "* Roles
+:PROPERTIES:
+:tangle-dir: roles
+:END:
+** File Systems & Mounts
+:PROPERTIES:
+:tangle-dir: (tdir-base \"file_system\")
+:END:
+*** Tasks
+:PROPERTIES:
+:tangle-dir: (tdir-base \"tasks\")
+:END:
+*** Handlers
+#+begin_src yaml
+x: 1
+#+end_src
+"
+  "Three-level hierarchy whose deepest headings inherit through sexps.")
+
+(ert-deftest org-tangle-dir-test/narrowed-sexp-reaches-hidden-parent ()
+  "A `tdir-base' property resolves while narrowed to its own subtree."
+  (org-tangle-dir-test-with-temp-text org-tangle-dir-test--roles-text
+    (re-search-backward "^\\*\\*\\* Tasks")
+    (org-narrow-to-subtree)
+    (should (string= (org-tangle-dir)
+                     (expand-file-name "roles/file_system/tasks")))
+    (should (buffer-narrowed-p))))
+
+(ert-deftest org-tangle-dir-test/narrowed-inherits-hidden-parent ()
+  "A heading without the property, narrowed below the ancestor that sets
+a `tdir-base' value, resolves that value from the ancestor."
+  (org-tangle-dir-test-with-temp-text
+      (concat "#+PROPERTY: tangle-dir /file-level\n"
+              org-tangle-dir-test--roles-text)
+    (re-search-forward "^x: 1")
+    (org-narrow-to-subtree)
+    (should (string= (org-tangle-dir "main.yml")
+                     (expand-file-name "roles/file_system/main.yml")))))
+
 (provide 'org-tangle-dir-tests)
 ;;; org-tangle-dir-tests.el ends here

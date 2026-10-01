@@ -97,58 +97,63 @@ file-level #+PROPERTY (checked only after parent walk exhausts).
 
 Plain string -> trim trailing slashes and return.
 Sexp         -> validated and evaluated; circular refs cause a user-error.
-Empty/missing -> walks up outline tree; falls back to file-level property."
+Empty/missing -> walks up outline tree; falls back to file-level property.
+
+The walk ignores narrowing, so ancestors outside the accessible
+portion of the buffer still count."
   ;; Iterative parent walk to avoid deep recursion on large trees.
   ;; Tracks visited heading positions for circular reference detection.
   (save-excursion
-    (let ((candidates '())
-          (seen nil))
-      ;; Collect all heading positions from current up to root.
-      (while (progn
-               (let ((p (point)))
-                 (unless (memq p seen)
-                   (push p candidates)
-                   (push p seen)))
-               (org-up-heading-safe)))
-      ;; Candidates were collected in parent-first order; reverse to get
-      ;; current heading first, then parents.
-      (setq candidates (nreverse candidates))
-      ;; Search each candidate heading for tangle-dir property.
-      (let (result)
-        (dolist (pos candidates)
+    (save-restriction
+      (widen)
+      (let ((candidates '())
+            (seen nil))
+        ;; Collect all heading positions from current up to root.
+        (while (progn
+                 (let ((p (point)))
+                   (unless (memq p seen)
+                     (push p candidates)
+                     (push p seen)))
+                 (org-up-heading-safe)))
+        ;; Candidates were collected in parent-first order; reverse to get
+        ;; current heading first, then parents.
+        (setq candidates (nreverse candidates))
+        ;; Search each candidate heading for tangle-dir property.
+        (let (result)
+          (dolist (pos candidates)
+            (unless result
+              (goto-char pos)
+              (let ((raw (org-entry-get nil "tangle-dir" nil)))
+                (when (and (stringp raw) (> (length raw) 0))
+                  (cond
+                   ;; Plain string.
+                   ((not (string-prefix-p "(" (string-trim raw)))
+                    (setq result (org-tangle-dir--trim-trailing-slash (string-trim raw))))
+                   ;; Sexp.
+                   (t
+                    (let* ((hd-pos (save-excursion (org-back-to-heading t) (point))))
+                      (when (memq hd-pos org-tangle-dir--resolving)
+                        (user-error
+                         "tdir: circular :tangle-dir: at '%s' - use `org-tangle-dir-base' in properties, not `tdir'"
+                         (org-entry-get nil "ITEM")))
+                      (let ((org-tangle-dir--resolving (cons hd-pos org-tangle-dir--resolving)))
+                        (setq result
+                              (org-tangle-dir--trim-trailing-slash
+                               (org-tangle-dir--eval-sexp (string-trim raw))))))))))))
+          ;; No heading-level property found: try file-level property.
           (unless result
-            (goto-char pos)
-            (let ((raw (org-entry-get nil "tangle-dir" nil)))
-              (when (and (stringp raw) (> (length raw) 0))
-                (cond
-                 ;; Plain string.
-                 ((not (string-prefix-p "(" (string-trim raw)))
-                  (setq result (org-tangle-dir--trim-trailing-slash (string-trim raw))))
-                 ;; Sexp.
-                 (t
-                  (let* ((hd-pos (save-excursion (org-back-to-heading t) (point))))
-                    (when (memq hd-pos org-tangle-dir--resolving)
-                      (user-error
-                       "tdir: circular :tangle-dir: at '%s' - use `org-tangle-dir-base' in properties, not `tdir'"
-                       (org-entry-get nil "ITEM")))
-                    (let ((org-tangle-dir--resolving (cons hd-pos org-tangle-dir--resolving)))
-                      (setq result
-                            (org-tangle-dir--trim-trailing-slash
-                             (org-tangle-dir--eval-sexp (string-trim raw))))))))))))
-        ;; No heading-level property found: try file-level property.
-        (unless result
-          (let ((file-raw (org-entry-get nil "tangle-dir" t)))
-            (cond
-             ((and (stringp file-raw) (> (length file-raw) 0)
-                   (string-prefix-p "(" (string-trim file-raw)))
-              (setq result
-                    (org-tangle-dir--trim-trailing-slash
-                     (org-tangle-dir--eval-sexp (string-trim file-raw)))))
-             ((and (stringp file-raw) (> (length file-raw) 0))
-              (setq result (org-tangle-dir--trim-trailing-slash file-raw)))
-             (t
-              (user-error "tdir: no :tangle-dir: property found in heading hierarchy or file")))))
-        result))))
+            (let ((file-raw (org-entry-get nil "tangle-dir" t)))
+              (cond
+               ((and (stringp file-raw) (> (length file-raw) 0)
+                     (string-prefix-p "(" (string-trim file-raw)))
+                (setq result
+                      (org-tangle-dir--trim-trailing-slash
+                       (org-tangle-dir--eval-sexp (string-trim file-raw)))))
+               ((and (stringp file-raw) (> (length file-raw) 0))
+                (setq result (org-tangle-dir--trim-trailing-slash file-raw)))
+               (t
+                (user-error "tdir: no :tangle-dir: property found in heading hierarchy or file")))))
+          result)))))
 
 ;;;###autoload
 (defun org-tangle-dir-base (&optional subdir)
@@ -161,13 +166,14 @@ For externally-rooted paths, use expand-file-name directly:
 
   :tangle-dir: (expand-file-name \"nnn/plugins\" (xdg-config-home))"
   (save-excursion
-    (save-restriction (widen))
-    (unless (org-up-heading-safe)
-      (user-error "org-tangle-dir-base: no parent heading"))
-    (let ((parent-dir (org-tangle-dir--effective-dir)))
-      (if subdir
-          (expand-file-name (string-trim subdir "/" nil) parent-dir)
-        parent-dir))))
+    (save-restriction
+      (widen)
+      (unless (org-up-heading-safe)
+        (user-error "org-tangle-dir-base: no parent heading"))
+      (let ((parent-dir (org-tangle-dir--effective-dir)))
+        (if subdir
+            (expand-file-name (string-trim subdir "/" nil) parent-dir)
+          parent-dir)))))
 
 ;;;###autoload
 (defun org-tangle-dir (&optional path)
