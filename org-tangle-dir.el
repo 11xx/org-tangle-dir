@@ -177,13 +177,14 @@ For externally-rooted paths, use expand-file-name directly:
 
 ;;;###autoload
 (defun org-tangle-dir (&optional path)
-  "Return the effective tangle directory for the current Org entry,
-optionally joined with PATH via `expand-file-name'.
+  "Return the effective tangle directory for the current Org entry.
+With PATH, return PATH expanded inside that directory.
 
 Use in :tangle src block headers:
   :tangle (tdir \"filename.yml\")
 
-For :tangle-dir: property values, use `org-tangle-dir-base' or `expand-file-name'."
+For :tangle-dir: property values, use `org-tangle-dir-base' or
+`expand-file-name'."
   (let ((dir (org-tangle-dir--effective-dir)))
     (if path
         (expand-file-name (string-trim path "/" nil) dir)

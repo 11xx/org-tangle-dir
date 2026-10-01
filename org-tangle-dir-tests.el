@@ -7,6 +7,7 @@
 
 (require 'org-tangle-dir)
 (require 'ert)
+(require 'xdg)
 
 (defmacro org-tangle-dir-test-with-temp-text (text &rest body)
   "Create temp buffer with TEXT in org-mode, then evaluate BODY at heading."
