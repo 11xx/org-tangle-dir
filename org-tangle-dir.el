@@ -1,7 +1,7 @@
 ;;; org-tangle-dir.el --- Org Babel `:tangle' helpers based on property value -*- lexical-binding: t; -*-
 
 ;; Author: Lucas G <g@11xx.org>
-;; URL: https://codeberg.org/useless-utils/org-tangle-dir
+;; URL: https://github.com/11xx/org-tangle-dir
 ;; Version: 2026.4.26
 ;; Package-Requires: ((emacs "27.1"))
 ;; SPDX-License-Identifier: Unlicense

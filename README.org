@@ -1,182 +1,65 @@
 #+TITLE: org-tangle-dir
 
-This package defines helper functions for dynamic =tangle-dir= property
-resolution in Org Babel.  It evaluates sexps in =tangle-dir= property values
-against a whitelist, walks the outline tree for inheritance, and falls back to
-file-level =#+PROPERTY= when no heading-level property exists.
+Tangle Org Babel blocks into a directory set once per heading.
 
-Values to properties are meant to be strings only, so the helper function takes
-that string and evaluates it as an Elisp expression. Since this is unsafe,
-mitigation comes from a explicit whitelist in
-=org-tangle-dir-whitelist-functions=.
+A literate config that tangles into several directories repeats a full path
+in every =:tangle= header, and moving a subtree's output means editing each
+block.  org-tangle-dir puts the directory on the heading as a =tangle-dir=
+property.  Child headings inherit it, and =(tdir "file")= in a =:tangle=
+header expands to a file inside it.
 
-This works because functions can be used in the =:tangle= header argument of a
-source code block, and by defining a helper function like that retrieves the
-value of a inherited property, dynamic strings can be used as tangle target.
+A =tangle-dir= value is a path, or a Lisp form for paths such as
+=(expand-file-name "foo" (xdg-config-home))=.  Forms are checked before they
+run: every function they call must be in =org-tangle-dir-whitelist-functions=,
+and every argument must be a literal or another allowed call.  Anything else
+signals an error without being evaluated.
 
-* Installation
+* Install
 
-package-vc-install (Emacs 29+)
+Requires Emacs 27.1.
+
 #+begin_src elisp
-(package-vc-install "https://codeberg.org/useless-utils/org-tangle-dir")
+(package-vc-install "https://github.com/11xx/org-tangle-dir") ; Emacs 29+
 (require 'org-tangle-dir)
 #+end_src
 
-use-package + package-vc-install (Emacs 29+)
-#+begin_src elisp
-(use-package org-tangle-dir
-  :vc (:url "https://codeberg.org/useless-utils/org-tangle-dir"))
-#+end_src
+With Elpaca, =(elpaca (org-tangle-dir :host github :repo "11xx/org-tangle-dir"))=;
+with straight.el, =(straight-use-package '(org-tangle-dir :host github :repo "11xx/org-tangle-dir"))=.
 
-straight.el
-#+begin_src elisp
-(straight-use-package
- '(org-tangle-dir :type git :host codeberg :repo "useless-utils/org-tangle-dir"))
-#+end_src
-
-Elpaca
-#+begin_src elisp
-(elpaca (org-tangle-dir :host codeberg :repo "useless-utils/org-tangle-dir"))
-#+end_src
-
-Manual
-#+begin_src elisp
-(add-to-list 'load-path "/path/to/org-tangle-dir")
-(require 'org-tangle-dir)
-#+end_src
-
-* Usage
-
-I recommend using the shorthand aliases:
-- =tdir= is a short alias for =org-tangle-dir=
-- =tdir-base= is a short alias for =org-tangle-dir-base=
-
-** Property syntaxes
-
-=org-tangle-dir= supports both drawer and file-level property syntax:
-
-: #+PROPERTY: tangle-dir /default/path
-
-or in a heading drawer (recommended):
-#+begin_src text
-:PROPERTIES:
-:tangle-dir: /tmp/myproject
-:END:
-#+end_src
-
-** Resolution order
-
-When resolving =tangle-dir= for a heading:
-
-1. Current heading's drawer (if non-empty)
-2. Parent heading's drawer (walk up outline)
-3. File-level =#+PROPERTY= (checked once at top of tree)
-4. Error if nothing found
-
-** Sexp evaluation
-
-Property values that start with =(= are evaluated as Lisp.  Only whitelisted
-functions may be used:
-
-#+begin_src text
-:PROPERTIES:
-:tangle-dir: (expand-file-name "conf" (xdg-config-home))
-:END:
-#+end_src
-
-- Allowed functions by default:
-  + =org-tangle-dir-base=
-  + =tdir-base=
-  + =concat=
-  + =expand-file-name=
-  + =getenv=
-  + =xdg-data-dirs=
-  + =xdg-bin-home=
-  + =xdg-cache-home=
-  + =xdg-config-dirs=
-  + =xdg-config-home=
-  + =xdg-data-home=
-  + =xdg-runtime-dir=
-
-** Child-relative paths
-
-Use =tdir-base= to build paths relative to the parent heading's
-effective tangle dir:
+* Use
 
 #+begin_src org
-,* Project
+,#+PROPERTY: header-args :mkdirp yes
+,#+PROPERTY: tangle-dir ~/.config
+
+,* myapp
 :PROPERTIES:
 :tangle-dir: ~/projects/myapp
 :END:
+,#+begin_src sh :tangle (tdir "setup.sh")
+echo "running setup"
+,#+end_src
+
 ,** Config
 :PROPERTIES:
 :tangle-dir: (tdir-base "config")
 :END:
-#+end_src
-
-tdir-base =>
-: "/home/user/projects/myapp/config"
-
-** Src block usage
-
-In a =:tangle= header of a source block, call =tdir= with the
-filename:
-#+begin_src org
-:PROPERTIES:
-:tangle-dir: ~/projects/myapp
-:END:
-
-,** Config
-,#+begin_src conf :tangle (tdir "app.conf")
-server.port: 8080
-,#+end_src
-#+end_src
-
-tdir =>
-: /home/user/projects/myapp/app.conf
-
-** Example
-#+begin_src org
-,#+PROPERTY: tangle-dir ~/projects/myapp
-
-,* Scripts
-,#+begin_src sh :tangle (tdir "setup.sh")
-#!/bin/bash
-echo "running setup"
-,#+end_src
-
-,* Config
-:PROPERTIES:
-:tangle-dir: (expand-file-name "config" (xdg-config-home))
-:END:
 ,#+begin_src yaml :tangle (tdir "app.yml")
-app:
-  name: myapp
+name: myapp
+,#+end_src
+
+,* Shell
+,#+begin_src sh :tangle (tdir "myapp.sh")
+export MYAPP=1
 ,#+end_src
 #+end_src
 
-- where ::
-  + ~(tdir "setup.sh")~  => ~/home/user/projects/myapp/setup.sh~
-  + ~(tdir "app.yml")~ => ~/home/user/.config/config/app.yml~
+Tangling writes =~/projects/myapp/setup.sh=, =~/projects/myapp/config/app.yml=
+and =~/.config/myapp.sh=.  A heading takes the nearest =tangle-dir= on itself
+or an ancestor, then the file-level =#+PROPERTY=.  Inside a property, use
+=tdir-base= (alias of =org-tangle-dir-base=) to build on the parent heading's
+directory; =tdir= (alias of =org-tangle-dir=) belongs in =:tangle= headers.
 
+* License
 
-
-* Troubleshooting
-
-** "circular :tangle-dir:" error
-
-If a heading's =tangle-dir= uses =(tdir ...)= pointing to itself or a child,
-circular resolution is detected and blocked.  Use =tdir-base= for parent-relative
-paths instead.
-
-** "unsafe form" error
-
-Only functions in the whitelist may appear in sexp values.  This is a security
-measure. Arbitrary Elisp cannot be evaluated from property values.
-
-* COMMENT Notes
-# [2023-05-19 Fri 23:48:32 -03]
-# [2026-04-20 Mon 09:56:33 -03] @ak - pkg repo
-
-- [[https://emacs.stackexchange.com/questions/19877/how-to-evaluate-elisp-code-contained-in-a-string/19878#19878][read - How to evaluate Elisp code contained in a string? - Emacs Stack Exchange]]
-- [[https://emacs.stackexchange.com/questions/46479/how-to-set-a-tangled-parent-directory-for-each-subtree-in-org-mode/55859#55859][How to set a tangled parent directory for each subtree in org mode?]]
+Public domain; see [[file:UNLICENSE][UNLICENSE]].
